@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+import subprocess
+import re
+
+output = subprocess.Popen(['ip', 'addr'], stdout=subprocess.PIPE).communicate()[0]
+
+interfaces = []
+
+for line in output.split("\n"):
+	match = re.match("[0-9]+: ([a-z0-9]+):.*", line)
+	if match:
+		interfaces.append({
+			"name" : match.group(1),
+			"ip" : []
+		})
+		continue
+	#endif
+
+	match = re.match("\s+link/([a-z]+)\s+([0-9a-f:]+) .*", line)
+	if match:
+		interfaces[len(interfaces)-1]['type'] = match.group(1)
+		interfaces[len(interfaces)-1]['mac'] = match.group(2)
+		continue
+	#endif
+
+	match = re.match("\s+inet ([0-9\./]+) .*", line)
+	if match:
+		interfaces[len(interfaces)-1]['ip'].append({
+			"type" : "ipv4",
+			"address" : match.group(1)
+		})
+	#endif
+
+	match = re.match("\s+inet6 ([0-9a-f:/]+) .*", line)
+	if match:
+		interfaces[len(interfaces)-1]['ip'].append({
+			"type" : "ipv6",
+			"address" : match.group(1)
+		})
+	#endif
+
+for i in interfaces:
+	print "%s\ttype %s\tmac %s" % (i['name'], i['type'], i['mac'])
+	for ip in i['ip']:
+		print "\t%s %s" % (ip['type'], ip['address'])
+	#endfor
+#endfor

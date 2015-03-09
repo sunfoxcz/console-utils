@@ -1,0 +1,34 @@
+#!/usr/bin/env python
+
+import getpass
+import MySQLdb
+
+if __name__ == "__main__":
+	host = raw_input("Host: ")
+	user = raw_input("User: ")
+	passwd = getpass.getpass()
+	db = raw_input("Database: ")
+	engine = raw_input("Target engine (MyISAM, InnoDB): ")
+
+	db = MySQLdb.connect(host = host, user = user,
+							passwd = passwd, db = db)
+	cur = db.cursor()
+	
+	try:
+		cur.execute("SHOW TABLE STATUS")
+		tables = cur.fetchall()
+
+		for t in tables:
+			if t[1] in ['MyISAM', 'InnoDB'] and t[1] != engine:
+				sql = "ALTER TABLE `%s` ENGINE=%s" % (t[0], t[1])
+				print sql
+				cur.execute(sql)
+			#endif
+		#endfor	
+	except:
+		db.rollback()
+		raise
+	else:
+		db.commit()
+	#endtry
+#endif
