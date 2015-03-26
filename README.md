@@ -33,6 +33,21 @@ Help:
 $ mysql_convert_table_engine --help
 ```
 
+### mysql_compare_cross_table_columns
+
+Compares tables in specified database by engine, collation, field definitions
+of same field names and shows differences.
+
+Usage:
+```bash
+$ mysql_compare_cross_table_columns [OPTIONS] <database>
+```
+
+Help:
+```bash
+$ mysql_compare_cross_table_columns --help
+```
+
 ### pwgen
 
 Generates random password using characters, which doesn't look similar.

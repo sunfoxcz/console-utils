@@ -1,0 +1,162 @@
+#!/usr/bin/env python
+
+from _mysql_exceptions import OperationalError
+from MySQLdb.cursors import DictCursor
+from ConfigParser import ConfigParser
+from optparse import OptionParser
+
+import MySQLdb
+import getpass
+import sys
+import os
+
+# ------------------------------------------------------------------------------
+
+parser = OptionParser("Usage: %prog [OPTIONS] <database>")
+
+def print_help(option, opt, value, parser):
+	parser.print_help()
+	sys.exit()
+#enddef
+
+parser.remove_option("-h")
+parser.add_option("-?", "--help", action="callback", callback=print_help)
+parser.add_option("-h", "--host",
+					dest="host", default="localhost", help="Connect to host.")
+parser.add_option("-u", "--user", dest="user",
+					help="User for login if not current user.")
+parser.add_option("-p", "--password", dest="ask_pass", action="store_true", default=False,
+					help="Ask for password to use when connecting to server.")
+
+(options, args) = parser.parse_args()
+
+if len(args) < 1:
+	parser.print_help()
+	sys.exit()
+#endif
+
+# ------------------------------------------------------------------------------
+
+connection_options = {
+	'db' : args[0],
+	'host' : options.host,
+	'user' : options.user or getpass.getuser(),
+	'cursorclass' : DictCursor
+}
+
+if options.ask_pass:
+	connection_options['passwd'] = getpass.getpass()
+#endif
+
+try:
+	db = MySQLdb.connect(**connection_options)
+	cursor = db.cursor()
+except OperationalError as e:
+	if os.path.exists(os.path.expanduser("~/.my.cnf")):
+		config = ConfigParser()
+		config.read(os.path.expanduser("~/.my.cnf"))
+
+		if config.has_option('client', 'host'):
+			connection_options['host'] = config.get('client', 'host')
+		#endif
+
+		if config.has_option('client', 'user'):
+			connection_options['user'] = config.get('client', 'user')
+		#endif
+
+		if config.has_option('client', 'password'):
+			connection_options['passwd'] = config.get('client', 'password')
+		#endif
+	#endif
+
+	try:
+		db = MySQLdb.connect(**connection_options)
+		cursor = db.cursor()
+	except OperationalError as e:
+		print "%s: %s" % (e[0], e[1])
+		sys.exit()
+	#endtry
+#endtry
+
+# ------------------------------------------------------------------------------
+
+cursor.execute("SHOW TABLE STATUS")
+tables = cursor.fetchall()
+
+engines = {}
+collations = {}
+column_definitions = {}
+
+for t in tables:
+	if t['Engine'] == None and t['Comment'] == "VIEW":
+		continue
+	#endif
+
+	if not engines.has_key(t['Engine']):
+		engines[t['Engine']] = []
+	#endif
+	engines[t['Engine']].append(t['Name'])
+
+	if not collations.has_key(t['Collation']):
+		collations[t['Collation']] = []
+	#endif
+	collations[t['Collation']].append(t['Name'])
+
+	cursor.execute("SHOW FULL COLUMNS FROM `%s`" % t['Name'])
+	columns = cursor.fetchall()
+	for c in columns:
+		definition = "%s%s%s%s" % (
+			c['Type'],
+			c['Collation'] and t['Collation'] != c['Collation'] and " COLLATE %s" % c['Collation'] or "",
+			c['Null'] and " NULL" or " NOT NULL",
+			c['Default'] and " DEFAULT %s" % c['Default'] or ""
+		)
+
+		if not column_definitions.has_key(c['Field']):
+			column_definitions[c['Field']] = {}
+		#endif
+		if not column_definitions[c['Field']].has_key(definition):
+			column_definitions[c['Field']][definition] = []
+		#endif
+		column_definitions[c['Field']][definition].append("%s.%s" % (t['Name'], c['Field']))
+	#endfor
+#endfor
+
+print "--------------------------------------------------------------------------------"
+print "Engines:"
+print "--------------------------------------------------------------------------------"
+for engine, tables in engines.iteritems():
+	print "%s: %s" % (engine, len(tables))
+	if len(engines) > 1:
+		for t in tables:
+			print "  - %s" % t
+		#endfor
+	#endif
+#endfor
+
+print "--------------------------------------------------------------------------------"
+print "Collations:"
+print "--------------------------------------------------------------------------------"
+for collation, tables in collations.iteritems():
+	print "%s: %s" % (collation, len(collations))
+	if len(collations) > 1:
+		for t in tables:
+			print "  - %s" % t
+		#endfor
+	#endif
+#endfor
+
+print "--------------------------------------------------------------------------------"
+print "Columns:"
+print "--------------------------------------------------------------------------------"
+for column, definitions in column_definitions.iteritems():
+	if len(definitions) > 1:
+		for definition, definition_columns in definitions.iteritems():
+			print "%s %s" % (column, definition)
+			for dcol in definition_columns:
+				print "    - %s" % dcol
+			#endfor
+		#endfor
+		print "--------------------------------------------------------------------------------"
+	#endif
+#endfor
