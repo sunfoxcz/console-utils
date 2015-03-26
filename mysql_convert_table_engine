@@ -1,34 +1,94 @@
 #!/usr/bin/env python
 
-import getpass
+from _mysql_exceptions import OperationalError
+from MySQLdb.cursors import DictCursor
+from ConfigParser import ConfigParser
+from optparse import OptionParser
+
 import MySQLdb
+import getpass
+import sys
+import os
 
-if __name__ == "__main__":
-	host = raw_input("Host: ")
-	user = raw_input("User: ")
-	passwd = getpass.getpass()
-	db = raw_input("Database: ")
-	engine = raw_input("Target engine (MyISAM, InnoDB): ")
+# ------------------------------------------------------------------------------
 
-	db = MySQLdb.connect(host = host, user = user,
-							passwd = passwd, db = db)
-	cur = db.cursor()
-	
-	try:
-		cur.execute("SHOW TABLE STATUS")
-		tables = cur.fetchall()
+parser = OptionParser("Usage: %prog [OPTIONS] <database> <myisam|innodb>")
 
-		for t in tables:
-			if t[1] in ['MyISAM', 'InnoDB'] and t[1] != engine:
-				sql = "ALTER TABLE `%s` ENGINE=%s" % (t[0], engine)
-				print sql
-				cur.execute(sql)
-			#endif
-		#endfor	
-	except:
-		db.rollback()
-		raise
-	else:
-		db.commit()
-	#endtry
+def print_help(option, opt, value, parser):
+	parser.print_help()
+	sys.exit()
+#enddef
+
+parser.remove_option("-h")
+parser.add_option("-?", "--help", action="callback", callback=print_help)
+parser.add_option("-h", "--host",
+					dest="host", default="localhost", help="Connect to host.")
+parser.add_option("-u", "--user", dest="user",
+					help="User for login if not current user.")
+parser.add_option("-p", "--password", dest="ask_pass", action="store_true", default=False,
+					help="Ask for password to use when connecting to server.")
+
+(options, args) = parser.parse_args()
+
+if len(args) < 2:
+	parser.print_help()
+	sys.exit()
 #endif
+
+engine = args[1] == "innodb" and "InnoDB" or "MyISAM"
+
+# ------------------------------------------------------------------------------
+
+connection_options = {
+	'db' : args[0],
+	'host' : options.host,
+	'user' : options.user or getpass.getuser(),
+	'cursorclass' : DictCursor
+}
+
+if options.ask_pass:
+	connection_options['passwd'] = getpass.getpass()
+#endif
+
+try:
+	db = MySQLdb.connect(**connection_options)
+	cursor = db.cursor()
+except OperationalError as e:
+	if os.path.exists(os.path.expanduser("~/.my.cnf")):
+		config = ConfigParser()
+		config.read(os.path.expanduser("~/.my.cnf"))
+
+		if config.has_option('client', 'host'):
+			connection_options['host'] = config.get('client', 'host')
+		#endif
+
+		if config.has_option('client', 'user'):
+			connection_options['user'] = config.get('client', 'user')
+		#endif
+
+		if config.has_option('client', 'password'):
+			connection_options['passwd'] = config.get('client', 'password')
+		#endif
+	#endif
+
+	try:
+		db = MySQLdb.connect(**connection_options)
+		cursor = db.cursor()
+	except OperationalError as e:
+		print "%s: %s" % (e[0], e[1])
+		sys.exit()
+	#endtry
+#endtry
+
+# ------------------------------------------------------------------------------
+
+cursor.execute("SHOW TABLE STATUS")
+tables = cursor.fetchall()
+
+for t in tables:
+	if t['Engine'] in ['MyISAM', 'InnoDB'] and t['Engine'] != engine:
+		sql = "ALTER TABLE `%s` ENGINE=%s" % (t['Name'], engine)
+		print sql
+		cursor.execute(sql)
+	#endif
+#endfor	

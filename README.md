@@ -25,12 +25,12 @@ Converts tables of specified database to chosen format.
 
 Usage:
 ```bash
-$ mysql_convert_table_engine
-Host: localhost
-User: user
-Password: xxx
-Database: test
-Target engine (MyISAM, InnoDB): InnoDB
+$ mysql_convert_table_engine [OPTIONS] <database> <myisam|innodb>
+```
+
+Help:
+```bash
+$ mysql_convert_table_engine --help
 ```
 
 ### pwgen
