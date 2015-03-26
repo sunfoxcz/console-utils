@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
 		for t in tables:
 			if t[1] in ['MyISAM', 'InnoDB'] and t[1] != engine:
-				sql = "ALTER TABLE `%s` ENGINE=%s" % (t[0], t[1])
+				sql = "ALTER TABLE `%s` ENGINE=%s" % (t[0], engine)
 				print sql
 				cur.execute(sql)
 			#endif
