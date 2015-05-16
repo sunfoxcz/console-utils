@@ -1,0 +1,149 @@
+#!/usr/bin/env python
+
+from _mysql_exceptions import OperationalError
+from MySQLdb.cursors import DictCursor
+from ConfigParser import ConfigParser
+from optparse import OptionParser
+
+import MySQLdb
+import getpass
+import sys
+import os
+
+# ------------------------------------------------------------------------------
+
+parser = OptionParser("Usage: %prog [OPTIONS] <database> <from_collation> <to_collation>")
+
+def print_help(option, opt, value, parser):
+	parser.print_help()
+	sys.exit(0)
+#enddef
+
+parser.remove_option("-h")
+parser.add_option("-?", "--help", action="callback", callback=print_help)
+parser.add_option("-h", "--host",
+					dest="host", default="localhost", help="Connect to host.")
+parser.add_option("-u", "--user", dest="user",
+					help="User for login if not current user.")
+parser.add_option("-p", "--password", dest="ask_pass", action="store_true", default=False,
+					help="Ask for password to use when connecting to server.")
+
+(options, args) = parser.parse_args()
+
+if len(args) < 3:
+	parser.print_help()
+	sys.exit(1)
+#endif
+
+database = args[0]
+from_collation = args[1]
+to_collation = args[2]
+
+# ------------------------------------------------------------------------------
+
+connection_options = {
+	'db' : args[0],
+	'host' : options.host,
+	'user' : options.user or getpass.getuser(),
+	'cursorclass' : DictCursor
+}
+
+if options.ask_pass:
+	connection_options['passwd'] = getpass.getpass()
+#endif
+
+try:
+	db = MySQLdb.connect(**connection_options)
+	cursor = db.cursor()
+except OperationalError as e:
+	if os.path.exists(os.path.expanduser("~/.my.cnf")):
+		config = ConfigParser()
+		config.read(os.path.expanduser("~/.my.cnf"))
+
+		if config.has_option('client', 'host'):
+			connection_options['host'] = config.get('client', 'host')
+		#endif
+
+		if config.has_option('client', 'user'):
+			connection_options['user'] = config.get('client', 'user')
+		#endif
+
+		if config.has_option('client', 'password'):
+			connection_options['passwd'] = config.get('client', 'password')
+		#endif
+	#endif
+
+	try:
+		db = MySQLdb.connect(**connection_options)
+		cursor = db.cursor()
+	except OperationalError as e:
+		print "%s: %s" % (e[0], e[1])
+		sys.exit(1)
+	#endtry
+#endtry
+
+# ------------------------------------------------------------------------------
+
+cursor.execute("""
+	SELECT CHARACTER_SET_NAME FROM information_schema.COLLATIONS WHERE COLLATION_NAME = %s
+""", from_collation)
+collation_info = cursor.fetchone()
+if not collation_info:
+	print "Database doesn't support %s sollation" % from_collation
+	sys.exit(1)
+#endif
+
+cursor.execute("""
+	SELECT CHARACTER_SET_NAME FROM information_schema.COLLATIONS WHERE COLLATION_NAME = %s
+""", to_collation)
+collation_info = cursor.fetchone()
+if not collation_info:
+	print "Database doesn't support %s sollation" % to_collation
+	sys.exit(1)
+#endif
+
+to_charset = collation_info['CHARACTER_SET_NAME']
+
+# ------------------------------------------------------------------------------
+
+cursor.execute("""
+	SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = %s
+""", database)
+database_collation = cursor.fetchone()['DEFAULT_COLLATION_NAME']
+
+if database_collation == from_collation:
+	sql = "ALTER DATABASE `%s` CHARACTER SET = %s COLLATE = %s;" % (
+		database, to_charset, to_collation
+	)
+	print sql
+	cursor.execute(sql)
+#endif
+
+# ------------------------------------------------------------------------------
+
+cursor.execute("""
+	SELECT TABLE_NAME FROM information_schema.TABLES
+	WHERE TABLE_SCHEMA = %s AND TABLE_COLLATION = %s
+""", (database, from_collation))
+tables = cursor.fetchall()
+
+for t in tables:
+	sql = ["CONVERT TO CHARACTER SET %s COLLATE %s" % (to_charset, to_collation)]
+
+	cursor.execute("SHOW FULL COLUMNS FROM `%s`" % t['TABLE_NAME'])
+	columns = cursor.fetchall()
+
+	for c in columns:
+		if c['Collation'] == from_collation:
+			sql.append("CHANGE `%s` `%s` %s CHARACTER SET %s COLLATE %s %s %s" % (
+				c['Field'], c['Field'], c['Type'], to_charset, to_collation,
+				"NULL" if c['Null'] == "YES" else "NOT NULL",
+				"DEFAULT '%s'" % c['Default'] if c['Default'] else ("DEFAULT NULL" if c['Null'] == "YES" else "")
+			))
+		#endif
+	#endfor
+
+	sql = "ALTER TABLE `%s`\n\t%s;" % (t['TABLE_NAME'], ",\n\t".join(sql))
+	print sql
+	cursor.execute(sql)
+#endfor	

@@ -19,6 +19,21 @@ Usage:
 $ ipshow
 ```
 
+### mysql_convert_table_collation
+
+Converts database, tables and columns of specified collation to target collation.
+
+Usage:
+```bash
+$ mysql_convert_table_collation [OPTIONS] <database> <from_collation> <to_collation>
+$ mysql_convert_table_collation [OPTIONS] test utf8_general_ci utf8mb4_unicode_ci
+```
+
+Help:
+```bash
+$ mysql_convert_table_collation --help
+```
+
 ### mysql_convert_table_engine
 
 Converts tables of specified database to chosen format.
