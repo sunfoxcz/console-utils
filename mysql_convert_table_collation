@@ -89,7 +89,7 @@ cursor.execute("""
 """, from_collation)
 collation_info = cursor.fetchone()
 if not collation_info:
-	print "Database doesn't support %s sollation" % from_collation
+	print "Database doesn't support %s collation" % from_collation
 	sys.exit(1)
 #endif
 
@@ -98,7 +98,7 @@ cursor.execute("""
 """, to_collation)
 collation_info = cursor.fetchone()
 if not collation_info:
-	print "Database doesn't support %s sollation" % to_collation
+	print "Database doesn't support %s collation" % to_collation
 	sys.exit(1)
 #endif
 
