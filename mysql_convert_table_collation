@@ -93,6 +93,8 @@ if not collation_info:
 	sys.exit(1)
 #endif
 
+from_charset = collation_info['CHARACTER_SET_NAME']
+
 cursor.execute("""
 	SELECT CHARACTER_SET_NAME FROM information_schema.COLLATIONS WHERE COLLATION_NAME = %s
 """, to_collation)
@@ -137,6 +139,12 @@ for t in tables:
 		if c['Collation'] == from_collation:
 			sql.append("CHANGE `%s` `%s` %s CHARACTER SET %s COLLATE %s %s %s" % (
 				c['Field'], c['Field'], c['Type'], to_charset, to_collation,
+				"NULL" if c['Null'] == "YES" else "NOT NULL",
+				"DEFAULT '%s'" % c['Default'] if c['Default'] else ("DEFAULT NULL" if c['Null'] == "YES" else "")
+			))
+		elif c['Collation'] == "%s_bin" % from_charset:
+			sql.append("CHANGE `%s` `%s` %s CHARACTER SET %s COLLATE %s_bin %s %s" % (
+				c['Field'], c['Field'], c['Type'], to_charset, to_charset,
 				"NULL" if c['Null'] == "YES" else "NOT NULL",
 				"DEFAULT '%s'" % c['Default'] if c['Default'] else ("DEFAULT NULL" if c['Null'] == "YES" else "")
 			))
