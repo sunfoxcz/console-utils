@@ -63,6 +63,31 @@ Help:
 $ mysql_compare_cross_table_columns --help
 ```
 
+### postqueue_filter
+
+Filter Postfix mail queue by recipient, sender or invalid dns lookup and possibly delete it.
+
+Help:
+```bash
+$ postqueue_filter -h
+```
+
+Show messages by recipient:
+```bash
+$ postqueue_filter -r some@recipient.com
+```
+
+Delete messages by sender:
+```bash
+$ postqueue_filter -s some@sender.com -d
+```
+
+Show and delete messages undeliverable because of invalid MX record:
+```bash
+$ postqueue_filter -i
+$ postqueue_filter -i -d
+```
+
 ### pwgen
 
 Generates random password using characters, which doesn't look similar.

@@ -1,0 +1,91 @@
+#!/usr/bin/env python
+
+from optparse    import OptionParser
+from subprocess  import check_output, STDOUT
+from sys         import exit
+
+import re
+
+# --------------------------------------------------------------------------------------------------
+
+parser = OptionParser()
+parser.add_option("-s", "--sender", dest="sender", help="Mail sender")
+parser.add_option("-r", "--recipient", dest="recipient", help="Mail recipient")
+parser.add_option("-i", "--invalid", action="store_true", dest="invalid",
+					default=False, help="Match name service errors for MX records")
+parser.add_option("-d", "--delete", action="store_true", dest="delete",
+					default=False, help="Delete matched messages")
+
+(options, args) = parser.parse_args()
+
+# --------------------------------------------------------------------------------------------------
+
+postqueue = check_output(["postqueue", "-p"], stderr=STDOUT).strip().split("\n")
+
+if postqueue[0] == "Mail queue is empty":
+	print "Mail queue is empty"
+	exit(0)
+#endif
+
+del postqueue[0]
+del postqueue[-1]
+
+part = "header"
+for line in postqueue:
+
+	if part == "header":
+		m = re.search(r"^([0-9A-Z\*]+)\s+([0-9]+)\s+([A-Za-z]{3})\s+([A-Za-z]{3})\s+([0-9]+)\s+([0-9:]+)\s+([^$]+)$", line)
+		queue_id = m.group(1).replace("*", "")
+		sender = m.group(7)
+
+		part = "desc"
+		desc = []
+		recipients = []
+		continue
+	#endif
+
+	if part == "desc":
+		if line.strip() == "":
+			part = "header"
+
+			if options.sender and options.sender != sender:
+				continue
+			#endif
+
+			if options.recipient and options.recipient not in recipients:
+				continue
+			#endif
+
+			if options.invalid:
+				m = re.search(r"Name service error for name=([^ ]+) type=MX", " ".join(desc))
+				if not m:
+					continue
+				#endif
+			#endif
+
+			if options.delete:
+				check_output(["postsuper", "-d", queue_id], stderr=STDOUT)
+				print "Deleted message %s" % queue_id
+				continue
+			#endif
+
+			print "ID: %s, Sender: %s" % (queue_id, sender)
+			print "Recipients: %s" % ", ".join(recipients)
+			print "Description: %s" % " ".join(desc)
+			print ""
+
+			continue
+		#endif
+
+		m = re.search(r"^\s{41}([^$]+)$", line)
+		if m:
+			recipients.append(line.strip())
+			part = "desc"
+			continue
+		else:
+			desc.append(line.strip())
+			continue
+		#endif
+	#endif
+
+#endfor
