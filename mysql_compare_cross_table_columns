@@ -1,14 +1,21 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from _mysql_exceptions import OperationalError
-from MySQLdb.cursors import DictCursor
-from ConfigParser import ConfigParser
+from configparser import ConfigParser
+from importlib import import_module
 from optparse import OptionParser
 
-import MySQLdb
 import getpass
 import sys
 import os
+
+try:
+	import MySQLdb
+	from MySQLdb.cursors import DictCursor
+	from MySQLdb._exceptions import OperationalError
+except ModuleNotFoundError:
+	print("Module mysqlclient is missing, try installing python3-mysqldb package")
+	sys.exit()
+#endtry
 
 # ------------------------------------------------------------------------------
 
@@ -73,7 +80,7 @@ except OperationalError as e:
 		db = MySQLdb.connect(**connection_options)
 		cursor = db.cursor()
 	except OperationalError as e:
-		print "%s: %s" % (e[0], e[1])
+		print("%s: %s" % (e.args[0], e.args[1]))
 		sys.exit()
 	#endtry
 #endtry
@@ -92,12 +99,12 @@ for t in tables:
 		continue
 	#endif
 
-	if not engines.has_key(t['Engine']):
+	if t['Engine'] not in engines:
 		engines[t['Engine']] = []
 	#endif
 	engines[t['Engine']].append(t['Name'])
 
-	if not collations.has_key(t['Collation']):
+	if t['Collation'] not in collations:
 		collations[t['Collation']] = []
 	#endif
 	collations[t['Collation']].append(t['Name'])
@@ -112,51 +119,51 @@ for t in tables:
 			c['Default'] and " DEFAULT %s" % c['Default'] or ""
 		)
 
-		if not column_definitions.has_key(c['Field']):
+		if c['Field'] not in column_definitions:
 			column_definitions[c['Field']] = {}
 		#endif
-		if not column_definitions[c['Field']].has_key(definition):
+		if definition not in column_definitions[c['Field']]:
 			column_definitions[c['Field']][definition] = []
 		#endif
 		column_definitions[c['Field']][definition].append("%s.%s" % (t['Name'], c['Field']))
 	#endfor
 #endfor
 
-print "--------------------------------------------------------------------------------"
-print "Engines:"
-print "--------------------------------------------------------------------------------"
-for engine, tables in engines.iteritems():
-	print "%s: %s" % (engine, len(tables))
+print("--------------------------------------------------------------------------------")
+print("Engines:")
+print("--------------------------------------------------------------------------------")
+for engine, tables in engines.items():
+	print("%s: %s" % (engine, len(tables)))
 	if len(engines) > 1:
 		for t in tables:
-			print "  - %s" % t
+			print("  - %s" % t)
 		#endfor
 	#endif
 #endfor
 
-print "--------------------------------------------------------------------------------"
-print "Collations:"
-print "--------------------------------------------------------------------------------"
-for collation, tables in collations.iteritems():
-	print "%s: %s" % (collation, len(collations))
+print("--------------------------------------------------------------------------------")
+print("Collations:")
+print("--------------------------------------------------------------------------------")
+for collation, tables in collations.items():
+	print("%s: %s" % (collation, len(collations)))
 	if len(collations) > 1:
 		for t in tables:
-			print "  - %s" % t
+			print("  - %s" % t)
 		#endfor
 	#endif
 #endfor
 
-print "--------------------------------------------------------------------------------"
-print "Columns:"
-print "--------------------------------------------------------------------------------"
-for column, definitions in column_definitions.iteritems():
+print("--------------------------------------------------------------------------------")
+print("Columns:")
+print("--------------------------------------------------------------------------------")
+for column, definitions in column_definitions.items():
 	if len(definitions) > 1:
-		for definition, definition_columns in definitions.iteritems():
-			print "%s %s" % (column, definition)
+		for definition, definition_columns in definitions.items():
+			print("%s %s" % (column, definition))
 			for dcol in definition_columns:
-				print "    - %s" % dcol
+				print("    - %s" % dcol)
 			#endfor
 		#endfor
-		print "--------------------------------------------------------------------------------"
+		print("--------------------------------------------------------------------------------")
 	#endif
 #endfor

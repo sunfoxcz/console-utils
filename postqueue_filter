@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from optparse    import OptionParser
 from subprocess  import check_output, STDOUT
@@ -20,10 +20,10 @@ parser.add_option("-d", "--delete", action="store_true", dest="delete",
 
 # --------------------------------------------------------------------------------------------------
 
-postqueue = check_output(["postqueue", "-p"], stderr=STDOUT).strip().split("\n")
+postqueue = check_output(["postqueue", "-p"], stderr=STDOUT).decode('utf-8').strip().split("\n")
 
 if postqueue[0] == "Mail queue is empty":
-	print "Mail queue is empty"
+	print("Mail queue is empty")
 	exit(0)
 #endif
 
@@ -65,14 +65,14 @@ for line in postqueue:
 
 			if options.delete:
 				check_output(["postsuper", "-d", queue_id], stderr=STDOUT)
-				print "Deleted message %s" % queue_id
+				print("Deleted message %s" % queue_id)
 				continue
 			#endif
 
-			print "ID: %s, Sender: %s" % (queue_id, sender)
-			print "Recipients: %s" % ", ".join(recipients)
-			print "Description: %s" % " ".join(desc)
-			print ""
+			print("ID: %s, Sender: %s" % (queue_id, sender))
+			print("Recipients: %s" % ", ".join(recipients))
+			print("Description: %s" % " ".join(desc))
+			print("")
 
 			continue
 		#endif

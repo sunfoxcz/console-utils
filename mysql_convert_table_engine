@@ -1,14 +1,20 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from _mysql_exceptions import OperationalError
-from MySQLdb.cursors import DictCursor
-from ConfigParser import ConfigParser
+from configparser import ConfigParser
 from optparse import OptionParser
 
-import MySQLdb
 import getpass
 import sys
 import os
+
+try:
+	import MySQLdb
+	from MySQLdb.cursors import DictCursor
+	from MySQLdb._exceptions import OperationalError
+except ModuleNotFoundError:
+	print("Module mysqlclient is missing, try installing python3-mysqldb package")
+	sys.exit()
+#endtry
 
 # ------------------------------------------------------------------------------
 
@@ -75,7 +81,7 @@ except OperationalError as e:
 		db = MySQLdb.connect(**connection_options)
 		cursor = db.cursor()
 	except OperationalError as e:
-		print "%s: %s" % (e[0], e[1])
+		print("%s: %s" % (e.args[0], e.args[1]))
 		sys.exit()
 	#endtry
 #endtry
@@ -88,7 +94,7 @@ tables = cursor.fetchall()
 for t in tables:
 	if t['Engine'] in ['MyISAM', 'InnoDB'] and t['Engine'] != engine:
 		sql = "ALTER TABLE `%s` ENGINE=%s" % (t['Name'], engine)
-		print sql
+		print(sql)
 		cursor.execute(sql)
 	#endif
 #endfor	

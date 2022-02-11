@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from argparse import ArgumentParser
 from os.path  import isfile
@@ -12,12 +12,12 @@ parser.add_argument('file2')
 options = parser.parse_args()
 
 if not isfile(options.file1):
-	print "Cannot read file %s" % options.file1
+	print("Cannot read file %s" % options.file1)
 	exit(1)
 #endif
 
 if not isfile(options.file2):
-	print "Cannot read file %s" % options.file2
+	print("Cannot read file %s" % options.file2)
 	exit(1)
 #endif
 
@@ -107,11 +107,11 @@ with open(options.file2, 'r') as f:
 for section in data1:
 	""" Whole section is missing """
 	if section not in data2:
-		print "- [%s]" % section
+		print("- [%s]" % section)
 		for item in  data1[section]:
-			print "- %s = %s" % (item, data1[section][item])
+			print("- %s = %s" % (item, data1[section][item]))
 		#endfor
-		print ""
+		print("")
 		continue
 	#endif
 
@@ -120,27 +120,27 @@ for section in data1:
 		continue
 	#endif
 
-	print "[%s]" % section
+	print("[%s]" % section)
 	
 	for item in data1[section]:
 		if item not in data2[section]:
 			""" Item is missing """
-			print "- %s = %s" % (item, data1[section][item])
+			print("- %s = %s" % (item, data1[section][item]))
 		else:
 			""" Item is not equal """
-			print "< %s = %s" % (item, data1[section][item])
-			print "> %s = %s" % (item, data2[section][item])
+			print("< %s = %s" % (item, data1[section][item]))
+			print("> %s = %s" % (item, data2[section][item]))
 		#endif
 	#endfor
 
 	for item in data2[section]:
 		if item not in data1[section]:
 			""" Item is added """
-			print "+ %s = %s" % (item, data2[section][item])
+			print("+ %s = %s" % (item, data2[section][item]))
 		#endif
 	#endfor
 
-	print ""
+	print("")
 #endfor
 
 # ------------------------------------------------------------------------------
@@ -148,10 +148,10 @@ for section in data1:
 for section in data2:
 	""" Whole section is added """
 	if section not in data1:
-		print "+ [%s]" % section
+		print("+ [%s]" % section)
 		for item in  data2[section]:
-			print "+ %s = %s" % (item, data2[section][item])
+			print("+ %s = %s" % (item, data2[section][item]))
 		#endfor
-		print ""
+		print("")
 	#endif
 #endfor
