@@ -4,10 +4,56 @@
 
 Will compare two INI files and show difference by section.
 Position of keys within section doesn't matter.
+Requires Python 3.12 or newer. Keys are case-sensitive; values are compared
+literally, without interpolation. Keys before the first section are supported.
 
 Usage:
 ```bash
 $ inidiff file1.ini file2.ini
+```
+
+### xmldiff
+
+Compares child fields of XML elements selected by an XPath expression.
+Requires Python 3.12 or newer and `lxml` (`python3 -m pip install lxml`).
+
+Usage:
+```bash
+$ xmldiff file1.xml file2.xml '//item' -c id -i updated_at,checked_at
+```
+
+`-c` / `--compare-tag` matches records by the value of a child tag; without it,
+records are matched by position. Comparison keys must be non-empty and unique.
+`-i` / `--ignore-tags` excludes comma-separated child tag names from comparison.
+Both options use exact tag names (Clark notation, `{namespace}tag`, for namespaced
+tags). XPath expressions can use `local-name()` to select namespaced elements.
+Child fields are indexed by tag name; if a tag repeats, the last value is used.
+Nested XML is compared as text after removing indentation whitespace; nested
+element order remains significant. Record attributes and direct record text are
+outside the comparison.
+
+### Diff output and colors
+
+Both diff tools show removed values with `-`, added values with `+`, and changed
+values with `<` (old) and `>` (new). Old values are red and new values are green
+when stdout is a terminal. Color control, in priority order:
+
+1. `--no-color` always disables ANSI colors.
+2. A non-empty [`NO_COLOR`](https://no-color.org/) disables colors.
+3. A non-empty [`FORCE_COLOR`](https://force-color.org/) enables colors, including
+   when stdout is redirected.
+4. Otherwise, colors follow stdout's terminal detection.
+
+Empty environment values are ignored; any non-empty value (including `0`) counts
+as set. `NO_COLOR` wins when both variables are set.
+
+Both tools accept `-h`, `-?`, and `--help`. A completed comparison exits with `0`,
+including when differences are found; file or content errors exit with `1`, and
+invalid command-line arguments with `2`. Errors are written to stderr.
+
+Run the regression tests with Python 3.12+ and `lxml` installed:
+```bash
+$ python3 -m unittest discover -s tests -v
 ```
 
 ### ipshow

@@ -1,172 +1,91 @@
 #!/usr/bin/env python3
+"""Compare INI files by section and key (Python 3.12+)."""
 
-from optparse import OptionParser
-from os.path  import isfile
-from sys      import exit
+import argparse
+import os
+from pathlib import Path
+import sys
 
-# ------------------------------------------------------------------------------
 
-parser = OptionParser("Usage: %prog <file1> <file2>")
+type IniData = dict[str | None, dict[str, str]]
 
-def print_help(option, opt, value, parser):
-	parser.print_help()
-	exit(0)
-#enddef
 
-parser.remove_option("-h")
-parser.add_option("-?", "--help", action="callback", callback=print_help)
+def use_color(no_color: bool) -> bool:
+    """Explicit opt-out takes precedence over the environment and TTY detection."""
+    if no_color or os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    return sys.stdout.isatty()
 
-(options, args) = parser.parse_args()
 
-if len(args) < 2:
-	parser.print_help()
-	exit(1)
-#endif
+def read_ini(path: Path) -> IniData:
+    """Keep key case and literal values, including percent signs and equals signs."""
+    data: IniData = {}
+    section = None
+    with path.open(encoding="utf-8-sig") as source:
+        for number, line in enumerate(source, start=1):
+            line = line.strip()
+            if not line or line.startswith((";", "#")):
+                continue
+            if line.startswith("["):
+                if not line.endswith("]") or not line[1:-1].strip():
+                    raise ValueError(f"{path}:{number}: Invalid section header")
+                section = line[1:-1].strip()
+                data.setdefault(section, {})
+                continue
+            key, _, value = line.partition("=")
+            if not key.strip():
+                raise ValueError(f"{path}:{number}: Empty key")
+            data.setdefault(section, {})[key.strip()] = value.strip()
+    return data
 
-file1 = args[0]
-file2 = args[1]
 
-if not isfile(file1):
-	print("Cannot read file %s" % file1)
-	exit(1)
-#endif
+def print_diff(left: IniData, right: IniData, color: bool) -> None:
+    def emit(line: str) -> None:
+        code = "31" if line.startswith(("-", "<")) else "32"
+        print(f"\033[{code}m{line}\033[0m" if color else line)
 
-if not isfile(file2):
-	print("Cannot read file %s" % file2)
-	exit(1)
-#endif
+    for section in dict.fromkeys((*left, *right)):
+        old = left.get(section, {})
+        new = right.get(section, {})
+        if section in left and section in right and old == new:
+            continue
+        prefix = "- " if section not in right else "+ " if section not in left else ""
+        if section is not None:
+            header = f"{prefix}[{section}]"
+            if prefix:
+                emit(header)
+            else:
+                print(header)
+        for key, value in old.items():
+            if key not in new:
+                emit(f"- {key} = {value}")
+            elif value != new[key]:
+                emit(f"< {key} = {value}")
+                emit(f"> {key} = {new[key]}")
+        for key, value in new.items():
+            if key not in old:
+                emit(f"+ {key} = {value}")
+        print()
 
-# ------------------------------------------------------------------------------
 
-data1 = {}
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, add_help=False)
+    parser.add_argument("-h", "-?", "--help", action="help", help="Show this help message and exit")
+    parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
+    parser.add_argument("file1", type=Path)
+    parser.add_argument("file2", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        left = read_ini(args.file1)
+        right = read_ini(args.file2)
+    except (OSError, UnicodeError, ValueError) as error:
+        print(f"{parser.prog}: {error}", file=sys.stderr)
+        return 1
+    print_diff(left, right, use_color(args.no_color))
+    return 0
 
-with open(file1, 'r') as f:
-	section = None
-	
-	for line in f:
-		line = line.strip()
 
-		""" Empty line """
-		if not line:
-			continue
-		#endif
-
-		""" Comment, skip it """
-		if line[0] in [';', '#']:
-			continue
-		#endif
-
-		""" Section """
-		if line[0] == '[':
-			section = line[1:-1]
-			data1[section] = {}
-			continue
-		#endif
-
-		""" Item """
-		line = line.split('=')
-		data1[section][line[0].strip()] = ''.join(line[1:]).strip()
-	#endfor
-#endwith
-
-# ------------------------------------------------------------------------------
-
-data2 = {}
-
-with open(file2, 'r') as f:
-	section = None
-
-	for line in f:
-		line = line.strip()
-
-		""" Empty line """
-		if not line:
-			continue
-		#endif
-
-		""" Comment, skip it """
-		if line[0] in [';', '#']:
-			continue
-		#endif
-
-		""" Section """
-		if line[0] == '[':
-			section = line[1:-1]
-			data2[section] = {}
-			continue
-		#endif
-
-		""" Item """
-		line = line.split('=')
-		key = line[0].strip()
-		val = ''.join(line[1:]).strip()
-
-		if section not in data1:
-			""" Missing section """
-			data2[section][key] = val
-		elif key not in data1[section]:
-			""" Added item """
-			data2[section][key] = val
-		elif data1[section][key] != val:
-			""" Different values """
-			data2[section][key] = val
-		else:
-			""" Same values """
-			del data1[section][key]
-		#endif
-	#endfor
-#endwith
-
-# ------------------------------------------------------------------------------
-
-for section in data1:
-	""" Whole section is missing """
-	if section not in data2:
-		print("- [%s]" % section)
-		for item in  data1[section]:
-			print("- %s = %s" % (item, data1[section][item]))
-		#endfor
-		print("")
-		continue
-	#endif
-
-	""" Both sections are same """
-	if not data1[section] and not data2[section]:
-		continue
-	#endif
-
-	print("[%s]" % section)
-	
-	for item in data1[section]:
-		if item not in data2[section]:
-			""" Item is missing """
-			print("- %s = %s" % (item, data1[section][item]))
-		else:
-			""" Item is not equal """
-			print("< %s = %s" % (item, data1[section][item]))
-			print("> %s = %s" % (item, data2[section][item]))
-		#endif
-	#endfor
-
-	for item in data2[section]:
-		if item not in data1[section]:
-			""" Item is added """
-			print("+ %s = %s" % (item, data2[section][item]))
-		#endif
-	#endfor
-
-	print("")
-#endfor
-
-# ------------------------------------------------------------------------------
-
-for section in data2:
-	""" Whole section is added """
-	if section not in data1:
-		print("+ [%s]" % section)
-		for item in  data2[section]:
-			print("+ %s = %s" % (item, data2[section][item]))
-		#endfor
-		print("")
-	#endif
-#endfor
+if __name__ == "__main__":
+    sys.exit(main())

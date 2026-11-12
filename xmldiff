@@ -1,152 +1,113 @@
 #!/usr/bin/env python3
+"""Compare the child fields of XML elements selected by XPath (Python 3.12+)."""
 
-from collections import OrderedDict
-from optparse    import OptionParser
-from os.path     import isfile
-from lxml        import etree
-from sys         import exit
+import argparse
+import os
+from pathlib import Path
+import sys
 
-import re
+from lxml import etree
 
-# ------------------------------------------------------------------------------
 
-parser = ArgumentParser(description="XML file diff utility.")
-parser.add_argument("file1")
-parser.add_argument("file2")
-parser.add_argument("path")
-parser.add_argument("compare_tag")
-parser.add_argument("ignore_tags")
-options = parser.parse_args()
+type XmlItems = dict[str, dict[str, str]]
 
-# ------------------------------------------------------------------------------
 
-parser = OptionParser("Usage: %prog <file1> <file2> <xpath>")
+def use_color(no_color: bool) -> bool:
+    """Explicit opt-out takes precedence over the environment and TTY detection."""
+    if no_color or os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    return sys.stdout.isatty()
 
-def print_help(option, opt, value, parser):
-	parser.print_help()
-	exit(0)
-#enddef
 
-parser.remove_option("-h")
-parser.add_option("-?", "--help", action="callback", callback=print_help)
-parser.add_option("-c", "--compare-tag", dest="compare_tag",
-					help="Compare using tag name")
-parser.add_option("-i", "--ignore-tags", dest="ignore_tags",
-					help="Comma separated list of tags to ignore during comparison")
+def field_value(child: etree._Element) -> str:
+    if len(child):
+        return (
+            (child.text or "")
+            + "".join(etree.tostring(part, encoding="unicode") for part in child)
+        ).strip()
+    return (child.text or "").strip()
 
-(options, args) = parser.parse_args()
 
-if len(args) < 2:
-	parser.print_help()
-	exit(1)
-#endif
+def read_items(
+    path: Path, xpath: str, compare_tag: str | None, ignore_tags: set[str]
+) -> XmlItems:
+    parser = etree.XMLParser(remove_blank_text=True, resolve_entities=False, no_network=True)
+    tree = etree.parse(str(path), parser)
+    nodes = tree.xpath(xpath)
+    if not isinstance(nodes, list):
+        raise ValueError("XPath must select elements")
+    items: XmlItems = {}
+    for position, node in enumerate(nodes, start=1):
+        if not isinstance(node, etree._Element) or not isinstance(node.tag, str):
+            raise ValueError("XPath must select elements")
+        fields = {}
+        key = None
+        for child in node:
+            if not isinstance(child.tag, str):
+                continue
+            if child.tag == compare_tag:
+                key = (child.text or "").strip()
+            if child.tag not in ignore_tags:
+                fields[child.tag] = field_value(child)
+        if compare_tag is None:
+            key = str(position)
+        elif not key:
+            raise ValueError(f"{path}: Element {position} has no non-empty {compare_tag!r} tag")
+        if key in items:
+            raise ValueError(f"{path}: Duplicate comparison key {key!r}")
+        items[key] = fields
+    return items
 
-file1 = args[0]
-file2 = args[1]
-path = args[2]
 
-if not isfile(file1):
-	print("Cannot read file %s" % file1)
-	exit(1)
-#endif
+def print_diff(left: XmlItems, right: XmlItems, label: str, color: bool) -> None:
+    def emit(line: str) -> None:
+        code = "31" if line.startswith(("-", "<")) else "32"
+        print(f"\033[{code}m{line}\033[0m" if color else line)
 
-if not isfile(file2):
-	print("Cannot read file %s" % file2)
-	exit(1)
-#endif
- 
-ignore_tags = ignore_tags.split(",")
+    for key in dict.fromkeys((*left, *right)):
+        old = left.get(key, {})
+        new = right.get(key, {})
+        if key in left and key in right and old == new:
+            continue
+        prefix = "- " if key not in right else "+ " if key not in left else ""
+        header = f"{prefix}{label}: {key}"
+        if prefix:
+            emit(header)
+        else:
+            print(header)
+        for tag, value in old.items():
+            if tag not in new:
+                emit(f"- {tag}: {value}")
+            elif value != new[tag]:
+                emit(f"< {tag}: {value}")
+                emit(f"> {tag}: {new[tag]}")
+        for tag, value in new.items():
+            if tag not in old:
+                emit(f"+ {tag}: {value}")
 
-# ------------------------------------------------------------------------------
 
-items_by_compare_tag_left = {}
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, add_help=False)
+    parser.add_argument("-h", "-?", "--help", action="help", help="Show this help message and exit")
+    parser.add_argument("-c", "--compare-tag", help="Match elements by this child tag (default: position)")
+    parser.add_argument("-i", "--ignore-tags", default="", help="Comma-separated child tags to ignore")
+    parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
+    parser.add_argument("file1", type=Path)
+    parser.add_argument("file2", type=Path)
+    parser.add_argument("path", help="XPath selecting the elements to compare")
+    args = parser.parse_args(argv)
+    ignore_tags = {tag.strip() for tag in args.ignore_tags.split(",") if tag.strip()}
+    try:
+        left = read_items(args.file1, args.path, args.compare_tag, ignore_tags)
+        right = read_items(args.file2, args.path, args.compare_tag, ignore_tags)
+    except (OSError, etree.LxmlError, ValueError) as error:
+        print(f"{parser.prog}: {error}", file=sys.stderr)
+        return 1
+    print_diff(left, right, args.compare_tag or "position", use_color(args.no_color))
+    return 0
 
-tree1 = etree.parse(file1)
-for node in tree1.xpath(path):
-	key = None
-	item = {}
 
-	for child in node:
-		if child.tag in ignore_tags:
-			continue
-		#endif
-
-		subchilds = child.getchildren()
-
-		if subchilds:
-			item[child.tag] = "".join([etree.tostring(s) for s in subchilds]).strip()
-			# TODO: Tohle sice funguje, ale kvuli poradi vnorenych tagu to chce porovnavat rekurzivne
-			item[child.tag] = re.sub(r"</([^>]+)>([^<]*)<([^>/]+)>", "</\\1><\\3>", item[child.tag])
-			item[child.tag] = re.sub(r"([^>]*)<([^>]+)/>([^<]*)", "<\\2/>", item[child.tag])
-			item[child.tag] = re.sub(r"</([^>]+)>([^<]*)</([^>]+)>", "</\\1></\\3>", item[child.tag])
-			item[child.tag] = re.sub(r">([\r\n\t ]+)<", "><", item[child.tag])
-		elif child.text:
-			item[child.tag] = child.text.strip()
-		else:
-			item[child.tag] = ""
-		#endif
-
-		if child.tag == compare_tag:
-			key = child.text.strip()
-		#endif
-	#endfor
-
-	items_by_compare_tag_left[key] = item
-#endfor
-
-# ------------------------------------------------------------------------------
-
-items_by_compare_tag_right = {}
-
-tree2 = etree.parse(file2)
-for node in tree2.xpath(path):
-	key = None
-	item = {}
-
-	for child in node:
-		if child.tag in ignore_tags:
-			continue
-		#endif
-
-		subchilds = child.getchildren()
-
-		if subchilds:
-			item[child.tag] = "".join([etree.tostring(s) for s in subchilds]).strip()
-			# TODO: Tohle sice funguje, ale kvuli poradi vnorenych tagu to chce porovnavat rekurzivne
-			item[child.tag] = re.sub(r"</([^>]+)>([^<]*)<([^>/]+)>", "</\\1><\\3>", item[child.tag])
-			item[child.tag] = re.sub(r"([^>]*)<([^>]+)/>([^<]*)", "<\\2/>", item[child.tag])
-			item[child.tag] = re.sub(r"</([^>]+)>([^<]*)</([^>]+)>", "</\\1></\\3>", item[child.tag])
-			item[child.tag] = re.sub(r">([\r\n\t ]+)<", "><", item[child.tag])
-		elif child.text:
-			item[child.tag] = child.text.strip()
-		else:
-			item[child.tag] = ""
-		#endif
-
-		if child.tag == compare_tag:
-			key = child.text.strip()
-		#endif
-	#endfor
-
-	items_by_compare_tag_right[key] = item
-
-	if items_by_compare_tag_left.has_key(key):
-		diff = {}
-		for key2, val in item.iteritems():
-			if items_by_compare_tag_left[key][key2] != val:
-				diff[key2] = (items_by_compare_tag_left[key][key2], val)
-			#endif
-		#endfor
-
-		if len(diff):
-			print("%s: %s" % (compare_tag, key))
-			for k, v in diff.iteritems():
-				print("< %s: %s" % (k, v[0]))
-				print("> %s: %s" % (k, v[1]))
-			#endfor
-		#endif
-	else:
-		# print("+ %s" % str(item))
-		pass
-	#endif
-#endfor
+if __name__ == "__main__":
+    sys.exit(main())
