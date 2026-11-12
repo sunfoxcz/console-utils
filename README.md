@@ -12,12 +12,24 @@ $ inidiff file1.ini file2.ini
 
 ### ipshow
 
-Will show `ip addr` output in much more readable format.
+Shows network interfaces, link types, MAC addresses, and IPv4/IPv6 addresses
+with prefix lengths in a compact format. Requires Python 3.12 or newer and
+`ip` from iproute2 with JSON support (`ip -json address show`). No Python
+packages are required.
+
+Interface names containing dots, hyphens, or other characters are supported.
+Names occupy a column sized to the longest name; types and IP addresses align
+in the next column. Type and MAC fields are separated by a single space.
+Missing MAC addresses are shown as `-`; interfaces without IP addresses are
+also listed. Errors are written to stderr and exit with status `1`; invalid
+command-line arguments exit with `2`.
 
 Usage:
 ```bash
 $ ipshow
 ```
+
+Use `-h`, `-?`, or `--help` for help.
 
 ### mysql_convert_table_collation
 
